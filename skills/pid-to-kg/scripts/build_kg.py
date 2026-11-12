@@ -83,7 +83,14 @@ def main() -> int:
             print(f"error: no extracted pages in {args.pages}", file=sys.stderr)
             return 1
 
-    kg = build_graph(pages, plant_id, plant_name, source)
+    reviewed_path = args.work / "reviewed_links.json"
+    reviewed_links = json.loads(reviewed_path.read_text(encoding="utf-8")) if reviewed_path.is_file() else []
+    if args.pages:
+        selected_pages = {p.page for p in pages}
+        reviewed_links = [link for link in reviewed_links
+                          if link.get("source", {}).get("page") in selected_pages
+                          and link.get("target", {}).get("page") in selected_pages]
+    kg = build_graph(pages, plant_id, plant_name, source, reviewed_links=reviewed_links)
     kg.issues.extend(run_qa(kg, args.work))
     sev: dict[str, int] = {}
     for i in kg.issues:

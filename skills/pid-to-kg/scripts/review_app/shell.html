@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Process Atlas | Drawing review</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<header id="topbar">
+  <a class="brand" href="#/home" aria-label="Process Atlas home"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Process Atlas</span></a>
+  <div class="plant"><span id="plant-name"></span><span id="plant-meta" class="dim"></span></div>
+  <button id="open-palette" class="searchbar" type="button" aria-label="Search assets, sheets, loops and issues"><span class="searchbar-text">Find a tag, asset, sheet or loop</span><kbd id="palette-key">/</kbd></button>
+  <div class="top-actions">
+    <button id="help-btn" class="icon-btn" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+    <button id="theme-btn" class="icon-btn" type="button" title="Switch light / dark (T)" aria-label="Switch theme"></button>
+    <button id="inspector-btn" class="icon-btn" type="button" title="Show or hide the inspector (I)" aria-label="Toggle inspector"></button>
+  </div>
+</header>
+<nav id="rail" aria-label="Views"></nav>
+<main id="main" tabindex="-1"></main>
+<aside id="inspector" aria-label="Selected item"></aside>
+<div id="palette" class="overlay" hidden>
+  <div class="palette-box" role="dialog" aria-modal="true" aria-label="Search">
+    <input id="palette-input" type="text" autocomplete="off" spellcheck="false" aria-label="Search" aria-controls="palette-results">
+    <div id="palette-hint" class="palette-hint"></div>
+    <div id="palette-results" role="listbox"></div>
+    <div class="palette-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
+  </div>
+</div>
+<div id="help" class="overlay" hidden><div class="help-box" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"></div></div>
+<div id="tooltip" role="tooltip" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script id="graph-data" type="application/json">__GRAPH_DATA__</script>
+<!--__PAGE_IMAGES__-->
+<script>
+(function(){
+"use strict";
+/*__JS__*/
+})();
+</script>
+</body>
+</html>

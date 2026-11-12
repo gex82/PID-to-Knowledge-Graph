@@ -4,6 +4,31 @@ By Scott Duncan. Reach me on [LinkedIn](https://www.linkedin.com/in/s-r-duncan/)
 
 **Turn P&ID drawings into a process knowledge graph that an LLM can reason over.**
 
+## Local operations demo (this fork)
+
+Run `./run-demo.sh` from this repository. It creates a virtual environment if needed, builds the bundled **synthetic** two-sheet plant, and serves an offline review at `http://127.0.0.1:8765/mini-plant/review/`. Use `PORT=8766 ./run-demo.sh` if the port is occupied, or `./run-demo.sh --build-only` to generate the files without a server.
+
+The review is a single offline page, **Process Atlas**, with eight views:
+
+- **Home**: plant status, open review items, and the things most worth attention.
+- **Process map**: plant-wide equipment flow, one lane per drawing, with return flows dashed. Highlight everything upstream or downstream of a selection, or split the view with the drawing.
+- **Drawings**: each sheet with every extracted item as a hotspot; pan, zoom, layer toggles, and a jump across off-page connectors.
+- **Trace**: upstream, downstream and A-to-B routes as steps, with valves, instruments on the route, sheet crossings, inferred links, alternatives and a downloadable evidence file.
+- **Loops**: each loop drawn from sensor to final element with ISA-style bubbles; missing parts are shown as gaps.
+- **Lists**: equipment, instrument, valve, line and off-page registers with sorting, filtering and CSV export.
+- **Review**: work through QA items against the drawing and record a decision. Export `review_decisions.json` and place it in `work/<plant>/validation/`; the next `review_kg.py` run merges it for the same plant and unchanged graph evidence. Decisions from another revision are reported as stale. Source-review notes alone do not accept a warning.
+- **Analytics**: review state, extraction confidence, instrument coverage, loop completeness, flow chokepoints, recirculation and valve census (computed in `pidkg/analytics.py`).
+
+Press `/` to search, `?` for shortcuts. The address bar always holds the current view and selection, so links can be shared. The synthetic demo has no source PDF, so its drawings show extracted positions only; real graph exports embed the rendered sheets (re-encoded at their original pixel dimensions as 16-level greyscale to keep the file small). No LLM API key is needed for building or querying **existing extractions**. Reading a new drawing still requires the visual extraction workflow below. The page source lives in `skills/pid-to-kg/scripts/review_app/` and is assembled by `review_kg.py`; there is no build step.
+
+**Review and validation:** [Process Atlas code review](docs/process-atlas-review-2026-11-11.md) · [Pahala drawing validation](docs/pahala-validation-2026-11-10.md). The local Pahala graph can be rebuilt with `./run-pahala.sh --build-only`. Its source PDF, extraction files, validation scripts and rendered drawings live in the ignored `work/pahala/` folder and must be restored separately on a new machine. This repository does not redistribute the source drawings.
+
+For an existing plant: `python skills/pid-to-kg/scripts/review_kg.py work/my-plant`. The resulting HTML embeds the graph and available page overviews; handle it according to the source documents' confidentiality and licensing.
+
+This fork adds regression coverage for repeated-tag loop membership, missing sensor actuation, and reversed path queries. Derived `ACTUATES` and `FEEDS` relationships now retain supporting edge IDs and a conservative minimum evidence confidence. Conflicting signal/tag loop assignments are flagged for review. These estimates are not calibrated accuracy probabilities. See [the assessment and roadmap](docs/assessment-2026-11-10.md) for remaining limits and priorities.
+
+The active priority is manufacturing operations and drawing review. Historian integration and AI fault investigation are a second phase.
+
 `pid-to-kg` is a [Claude skill](https://code.claude.com/docs/en/skills) that reads piping and instrumentation diagrams (P&IDs) and PFDs from PDF and builds a knowledge graph of the process. The PDFs can be digital (exported from CAD) or scanned. The graph captures:
 
 - **Process flow:** what is upstream and downstream of every tank, pump, valve and pipe segment.
@@ -139,3 +164,5 @@ The graph is machine-extracted from drawings. It must be reviewed by a qualified
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+The client regression checks also use Node.js (22 in CI); the application itself remains a standalone HTML file with no Node runtime requirement.

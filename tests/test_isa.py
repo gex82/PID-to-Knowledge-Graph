@@ -57,3 +57,13 @@ def test_non_isa_or_ambiguous(tag):
     # parsed when they cannot be ISA tags at all.
     if tag in ("HELLO", "12345", "SB-1200X-Y-Z"):
         assert p is None
+
+@pytest.mark.parametrize('raw, normalized, loop', [
+    ('LT-120101', 'LT-120101', 'L-120101'),
+    ('LIT 100, 114A', 'LIT-100.114A', 'L-100.114'),
+    ('LIT 100.114A', 'LIT-100.114A', 'L-100.114'),
+    ('ZSO-500, 201', 'ZSO-500.201', 'Z-500.201'),
+])
+def test_long_and_area_separated_numbers(raw, normalized, loop):
+    assert normalize_tag(raw) == normalized
+    assert parse_isa_tag(raw).loop_key == loop

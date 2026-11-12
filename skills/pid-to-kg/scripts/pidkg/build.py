@@ -199,7 +199,7 @@ class GraphBuilder:
             self._upsert(Node(
                 id=gid, type="Equipment", label=tag or eq.name or kind, tag=tag, kind=kind,
                 name=eq.name, status=eq.status, dexpi_class=EQUIPMENT_DEXPI.get(kind, "Equipment"),
-                sheets=[sheet_id], confidence=eq.confidence, attributes=_clean(eq.attributes),
+                sheets=[sheet_id], confidence=eq.confidence, attributes=_clean(dict(eq.attributes, notes=eq.notes, printed_tag=eq.tag)),
                 provenance=prov(eq)))
             self._register(page, eq.id, eq.tag, gid)
             if tag and not scope:
@@ -212,7 +212,7 @@ class GraphBuilder:
             if kind not in COMPONENT_DEXPI:
                 self.issue("info", "unknown_kind", f"component kind '{c.kind}' not in vocabulary",
                            sheet=sheet_id, page=page, node=gid, bbox=c.bbox)
-            attrs = _clean(dict(c.attributes, actuator=c.actuator, fail_position=c.fail_position,
+            attrs = _clean(dict(c.attributes, notes=c.notes, printed_tag=c.tag, actuator=c.actuator, fail_position=c.fail_position,
                                 normal_position=c.normal_position, size=c.size,
                                 loop=normalize_tag(c.loop)))
             isa = parse_isa_tag(tag) if tag else None
@@ -226,8 +226,10 @@ class GraphBuilder:
                 isa = None
             if isa and (actuated or kind == "relief_valve"):
                 key = normalize_tag(c.loop) or isa.loop_key
+                base = f"{tag}@{scope}" if scope else tag
+                dup = gid[len(base):]
                 attrs.update(isa_letters=isa.letters, variable=isa.variable, role=isa.role,
-                             loop_key=f"{key}@{scope}" if scope else key)
+                             loop_key=key if c.loop else f"{key}{'@' + scope if scope else ''}{dup}")
             elif c.loop:
                 attrs.update(loop_key=normalize_tag(c.loop), role="final_element")
             self._upsert(Node(
@@ -244,7 +246,7 @@ class GraphBuilder:
                 gid = self._add_instrument(f"{ins.function}-0", page, sheet_id, node_id=f"P{page:02d}.{ins.id}",
                                            location=ins.location, name=ins.name, status=ins.status,
                                            confidence=ins.confidence, loop=ins.loop,
-                                           attributes=ins.attributes, provenance=prov(ins),
+                                           attributes=_clean(dict(ins.attributes, notes=ins.notes, printed_tag=ins.tag)), provenance=prov(ins),
                                            scoped=True, untagged=True)
                 self._register(page, ins.id, None, gid)
                 continue
@@ -254,13 +256,13 @@ class GraphBuilder:
             gid = self._unique(page, base, ins.id, sheet_id, ins.bbox)
             loop = ins.loop
             dup = gid[len(base):]  # '#2' for a second item with the same tag on this sheet
-            if scope or dup:
+            if (scope or dup) and not loop:
                 isa = parse_isa_tag(ntag)
                 key = normalize_tag(loop) or (isa.loop_key if isa else None)
                 loop = f"{key}{'@' + scope if scope else ''}{dup}" if key else None
             gid = self._add_instrument(ins.tag, page, sheet_id, node_id=gid, location=ins.location,
                                        name=ins.name, status=ins.status, confidence=ins.confidence,
-                                       loop=loop, attributes=ins.attributes, provenance=prov(ins),
+                                       loop=loop, attributes=_clean(dict(ins.attributes, notes=ins.notes, printed_tag=ins.tag)), provenance=prov(ins),
                                        scoped=bool(scope))
             self._register(page, ins.id, ins.tag, gid)
 
@@ -281,7 +283,7 @@ class GraphBuilder:
                 id=gid, type="OffPageConnector", label=o.name or o.other_item or o.id,
                 tag=normalize_tag(o.tag), name=o.name, status=o.status, sheets=[sheet_id],
                 confidence=o.confidence, provenance=prov(o),
-                attributes=_clean(dict(o.attributes, direction=o.direction,
+                attributes=_clean(dict(o.attributes, notes=o.notes, direction=o.direction,
                                        other_drawing=o.other_drawing, other_item=o.other_item,
                                        line_number=o.line_number))))
             self._register(page, o.id, None, gid)
@@ -292,7 +294,7 @@ class GraphBuilder:
             self._upsert(Node(
                 id=gid, type="Boundary", label=label, name=b.name, status=b.status,
                 sheets=[sheet_id], confidence=b.confidence, provenance=prov(b),
-                attributes=_clean(dict(b.attributes, direction=b.direction))))
+                attributes=_clean(dict(b.attributes, notes=b.notes, direction=b.direction))))
             self._register(page, b.id, None, gid)
 
     def _unique(self, page: int, gid: str, local_id: str, sheet_id: str, bbox) -> str:
@@ -373,7 +375,7 @@ class GraphBuilder:
                     tag=normalize_tag(line.line_number), status=line.status, sheets=[sheet_id],
                     confidence=line.confidence, dexpi_class="PipingNetworkSegment",
                     attributes=_clean(dict(line_id=line.id, line_number=line.line_number,
-                                           size=line.size, service=line.service,
+                                           size=line.size, service=line.service, notes=line.notes, flow_direction=line.flow_direction,
                                            segment=k, segments=n)),
                     provenance=[Provenance(sheet=sheet_id, page=page, local_id=line.id)]))
                 segs.append(sid)
@@ -421,7 +423,7 @@ class GraphBuilder:
             b = self._resolve_signal_end(page, sig.to, sheet_id)
             if a and b:
                 self._edge(a, b, "SIGNAL_TO", confidence=sig.confidence, sheet=sheet_id,
-                           signal_type=sig.type, purpose=sig.purpose)
+                           signal_type=sig.type, purpose=sig.purpose, notes=sig.notes)
 
     def _resolve_endpoint(self, page: int, ep: Any, sheet_id: str, what: str) -> Optional[str]:
         if isinstance(ep, str):
@@ -479,7 +481,8 @@ class GraphBuilder:
         outs = [n for n in opcs if n.attributes.get("direction") == "out"]
         ins = [n for n in opcs if n.attributes.get("direction") == "in"]
         pairs = sorted(((self._opc_score(o, i), o.id, i.id) for o in outs for i in ins
-                        if i.sheets[0] != o.sheets[0]), reverse=True)
+                        if i.sheets[0] != o.sheets[0]
+                        and o.attributes.get("connection_type", "process") == i.attributes.get("connection_type", "process")), reverse=True)
         used: set[str] = set()
         for score, oid, iid in pairs:
             if score < 3 or oid in used or iid in used:
@@ -493,7 +496,8 @@ class GraphBuilder:
                            f"{o.attributes.get('line_number')}, but their flags name other drawings "
                            f"({o.attributes.get('other_drawing')} / {i.attributes.get('other_drawing')})",
                            sheet=o.sheets[0], node=oid, bbox=_first_bbox(o))
-            self._edge(oid, iid, "FLOWS_TO", confidence=min(o.confidence, 0.9),
+            etype = "SIGNAL_TO" if o.attributes.get("connection_type") == "signal" else "FLOWS_TO"
+            self._edge(oid, iid, etype, confidence=min(o.confidence, i.confidence, 0.9),
                        off_page=True, match_score=round(score, 2))
             o.attributes["linked_to"] = iid
             self.nodes[iid].attributes["linked_from"] = oid
@@ -505,6 +509,39 @@ class GraphBuilder:
                        f"off-page connector '{n.label}' ({way} {n.attributes.get('other_drawing')}) "
                        "has no matching connector or item", sheet=n.sheets[0], node=n.id,
                        bbox=_first_bbox(n))
+
+    def add_reviewed_links(self, links: list[dict]) -> None:
+        """Apply explicit source-reviewed links without rewriting printed flags.
+
+        Each record names local ids on both pages and the evidence for joining
+        them. This is for one-sided references that heuristic matching cannot
+        establish. Invalid endpoints are errors, never implicitly created.
+        """
+        for link in links:
+            try:
+                source = link["source"]
+                target = link["target"]
+                evidence = link["evidence"].strip()
+                etype = link.get("type", "FLOWS_TO")
+                confidence = float(link["confidence"])
+                if not evidence or etype not in ("FLOWS_TO", "SIGNAL_TO") or not 0 <= confidence <= 1:
+                    raise ValueError("invalid evidence, type or confidence")
+                # Require the actual local item id, not a plant-wide fallback.
+                a = self._local[int(source["page"])].get(source["id"])
+                z = self._local[int(target["page"])].get(target["id"])
+                if not a or not z or a == z:
+                    raise ValueError("endpoints must be distinct existing local items")
+            except (KeyError, TypeError, ValueError, AttributeError) as exc:
+                self.issue("error", "invalid_reviewed_link", f"invalid reviewed link: {exc}")
+                continue
+            self._edge(a, z, etype, confidence=min(confidence, self.nodes[a].confidence, self.nodes[z].confidence),
+                       derived=True, off_page=True, reviewed=True, evidence=evidence,
+                       source_pages=[source["page"], target["page"]],
+                       flow_direction="inferred" if etype == "FLOWS_TO" else None)
+            for nid in (a, z):
+                self.nodes[nid].attributes.setdefault("reviewed_links", []).append(z if nid == a else a)
+            self.issues = [issue for issue in self.issues
+                           if not (issue["code"] == "unmatched_off_page" and issue.get("node") in (a, z))]
 
     def _opc_score(self, out: Node, inn: Node) -> float:
         out_dn = self._drawing_of_sheet.get(out.sheets[0])
@@ -530,6 +567,8 @@ class GraphBuilder:
         return score
 
     def _link_opc_by_item(self, opc: Node) -> bool:
+        if opc.attributes.get("connection_type") == "signal":
+            return False  # Never turn a signal flag into a process connection.
         target = normalize_tag(opc.attributes.get("other_item"))
         gid = self._by_tag.get(target) if target else None
         if not gid or self.nodes[gid].type not in ("Equipment", "Component", "Instrument"):
@@ -639,6 +678,7 @@ class GraphBuilder:
     def _feeds_from(self, flows: list[Edge], is_terminal, view: Optional[str] = None,
                     keep=lambda a, b: True) -> None:
         out_adj: dict[str, list[str]] = defaultdict(list)
+        flow_edges = {(e.source, e.target): e for e in flows}
         for e in flows:
             out_adj[e.source].append(e.target)
         for start in [n.id for n in self.nodes.values() if is_terminal(n)]:
@@ -657,7 +697,16 @@ class GraphBuilder:
                         comps = [self.nodes[v].label for v in via[:-1]
                                  if self.nodes[v].type in ("Component", "Instrument", "Equipment")]
                         off_page = any(self.nodes[v].type == "OffPageConnector" for v in via)
+                        route = [start, *via]
+                        evidence = [flow_edges[(a, z)] for a, z in zip(route, route[1:])]
+                        confidence = min([self.nodes[v].confidence for v in route]
+                                         + [e.confidence for e in evidence])
                         self._edge(start, node_id, "FEEDS", derived=True,
+                                   confidence=confidence, evidence_edges=[e.id for e in evidence],
+                                   via_nodes=route,
+                                   flow_direction="inferred" if any(
+                                       e.attributes.get("flow_direction") == "inferred"
+                                       for e in evidence) else "shown",
                                    via_lines=[l for l in lines if l], via_items=comps,
                                    off_page=off_page or None, view=view)
                     continue
@@ -679,7 +728,7 @@ class GraphBuilder:
 
 
 def build_graph(pages: Iterable[PageExtraction], plant_id: str, plant_name: str,
-                source_file: Optional[str] = None) -> KnowledgeGraph:
+                source_file: Optional[str] = None, reviewed_links: Optional[list[dict]] = None) -> KnowledgeGraph:
     pages = list(pages)
     b = GraphBuilder(plant_id, plant_name, source_file)
     b.scopes = tag_scopes(pages)
@@ -693,6 +742,7 @@ def build_graph(pages: Iterable[PageExtraction], plant_id: str, plant_name: str,
     for p in pages:
         b.add_connectivity(p)
     b.link_off_page()
+    b.add_reviewed_links(reviewed_links or [])
     b.inherit_measurements()
     derive_loops(b)
     b.derive_feeds()
@@ -825,6 +875,13 @@ def tag_scopes(pages: list[PageExtraction]) -> dict[tuple[int, str], str]:
         for pg in clash:
             for t in members[key][pg]:
                 scopes[(pg, t)] = suffix[pg]
+    # A reviewer can explicitly disambiguate reused panel tags whose process
+    # locations are not directly drawn. Preserve the printed tag as metadata.
+    for p in pages:
+        for group in (p.equipment, p.components, p.instruments):
+            for item in group:
+                if item.tag and item.attributes.get("tag_scope") == "sheet":
+                    scopes[(p.page, normalize_tag(item.tag))] = suffix[p.page]
     return scopes
 
 

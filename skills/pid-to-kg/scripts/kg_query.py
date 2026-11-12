@@ -113,9 +113,9 @@ def main() -> int:
         result = {"from": _node_brief(g, nid), "direction": a.command, "items": rows}
     elif a.command == "path":
         x, y = need(2)
-        p = g.path(x, y) or g.path(y, x)
+        p = g.path(x, y)
         result = {"path": [_node_brief(g, i) for i in p]} if p else {"path": None,
-                  "note": "no directed flow path between these items"}
+                  "note": "no directed flow path from the first item to the second"}
     elif a.command == "loops":
         loops = [n for n in g.kg.nodes if n.type == "ControlLoop" and (not a.type or n.kind == a.type)]
         result = [{"id": n.id, "loop": n.label, "type": n.kind,
@@ -168,27 +168,8 @@ def main() -> int:
 
 
 def _local_piping(g: Graph, start: str, limit: int = 8) -> set[str]:
-    """Segments and fittings within ``limit`` hops of an item, stopping at equipment."""
-    found: set[str] = set()
-    for direction in ("down", "up"):
-        frontier = [start]
-        while frontier and len(found) < 500:
-            nxt = []
-            for cur in frontier:
-                edges = g.out[cur] if direction == "down" else g.inn[cur]
-                for e in edges:
-                    if e.type != "FLOWS_TO":
-                        continue
-                    other = e.target if direction == "down" else e.source
-                    if other in found or other == start or g.nodes[other].type in TERMINAL:
-                        continue
-                    found.add(other)
-                    nxt.append(other)
-            frontier = nxt
-            limit -= 1
-            if limit <= 0:
-                break
-    return found
+    from pidkg.analytics import local_piping
+    return local_piping(g, start, limit)
 
 
 def _print_text(obj, indent: int = 0) -> None:

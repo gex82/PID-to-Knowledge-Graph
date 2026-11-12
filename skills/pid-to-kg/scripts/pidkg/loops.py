@@ -77,9 +77,20 @@ def derive_loops(b: "GraphBuilder") -> None:
     sig_purpose: dict[tuple[str, str], str] = {}
     for e in b.edges:
         if e.type == "SIGNAL_TO":
-            sig_out[e.source].append(e.target)
+            if e.attributes.get("purpose", "unknown") in ("control", "trip", "unknown"):
+                sig_out[e.source].append(e.target)
             sig_in[e.target].append(e.source)
             sig_purpose[(e.source, e.target)] = e.attributes.get("purpose", "unknown")
+
+    signal_edges = {(e.source, e.target): e for e in b.edges if e.type == "SIGNAL_TO"}
+
+    def emit_actuation(source: str, target: str, via: list[str]) -> None:
+        route = [source, *via, target]
+        evidence = [signal_edges[(a, z)] for a, z in zip(route, route[1:])]
+        confidence = min([nodes[n].confidence for n in route] + [e.confidence for e in evidence])
+        b._edge(source, target, "ACTUATES", derived=True, confidence=confidence,
+                evidence_edges=[e.id for e in evidence],
+                via=[nodes[r].label for r in via] or None)
 
     # 1. Group by loop key.
     groups: dict[str, dict[str, str]] = defaultdict(dict)  # loop key -> {node id: role}
@@ -104,8 +115,7 @@ def derive_loops(b: "GraphBuilder") -> None:
                     members.setdefault(target, "final_element")
                     for r in via:
                         members.setdefault(r, "relay")
-                    b._edge(cid, target, "ACTUATES", derived=True,
-                            via=[nodes[r].label for r in via] or None)
+                    emit_actuation(cid, target, via)
             for src in sig_in.get(cid, []):
                 sn = nodes[src]
                 if sn.type == "Instrument" and sn.attributes.get("role") in SENSOR_ROLES:
@@ -115,10 +125,11 @@ def derive_loops(b: "GraphBuilder") -> None:
         # on/off logic in a PLC that is not drawn as a controller).
         for sid in [m for m, r in members.items() if r in ("switch", "hand_switch", "transmitter", "alarm", "other")]:
             for target, via in _trace_outputs(sid, sig_out, nodes):
-                if _is_final(nodes[target]) and target not in members:
-                    members[target] = "final_element"
-                    b._edge(sid, target, "ACTUATES", derived=True,
-                            via=[nodes[r].label for r in via] or None)
+                if _is_final(nodes[target]):
+                    members.setdefault(target, "final_element")
+                    for r in via:
+                        members.setdefault(r, "relay")
+                    emit_actuation(sid, target, via)
 
     # 3. Emit loop nodes for meaningful groups.
     loop_ids: dict[str, str] = {}

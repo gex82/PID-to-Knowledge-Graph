@@ -72,6 +72,30 @@ def run_qa(kg: KnowledgeGraph, work_dir: Optional[Path] = None) -> list[dict[str
 
     issues.extend(_revision_overlap(kg))
 
+    # A repeated tag's occurrence order is not a physical identity. If tag
+    # grouping supplies one sensor/controller but a drawn signal supplies a
+    # different loop's driver, retain both evidence paths and ask for review.
+    anchors: dict[str, set[str]] = defaultdict(set)
+    for n in kg.nodes:
+        key = n.attributes.get("loop_key")
+        if key and n.type == "Instrument" and n.attributes.get("role") in {
+            "controller", "transmitter", "switch", "hand_switch", "alarm"
+        }:
+            anchors[key].add(n.id)
+    conflicts: dict[str, set[str]] = defaultdict(set)
+    for e in kg.edges:
+        if e.type != "ACTUATES":
+            continue
+        final_key = nodes[e.target].attributes.get("loop_key")
+        driver_key = nodes[e.source].attributes.get("loop_key")
+        if final_key and driver_key and final_key != driver_key and anchors.get(final_key):
+            conflicts[e.target].add(driver_key)
+    for nid, driver_keys in sorted(conflicts.items()):
+        add("warning", "loop_signal_conflict",
+            f"{nid} has tag-based loop {nodes[nid].attributes['loop_key']} but drawn signals "
+            f"actuate it from {', '.join(sorted(driver_keys))}; verify physical loop identity "
+            "and use explicit per-item loop assignments where needed", nid)
+
 
     inferred = sum(1 for e in kg.edges if e.type == "FLOWS_TO"
                    and e.attributes.get("flow_direction") == "inferred")

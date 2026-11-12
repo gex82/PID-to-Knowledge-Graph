@@ -24,6 +24,7 @@ def normalize_tag(raw: Optional[str]) -> Optional[str]:
     s = str(raw).translate(_DASHES).strip().strip("\"'").upper()
     if not s:
         return None
+    s = re.sub(r"(?<=\d)\s*[,]\s*(?=\d)", ".", s)
     s = re.sub(r"[\s_/]*-[\s_/]*", "-", s)
     s = re.sub(r"[\s_]+", "-", s)
     s = re.sub(r"-{2,}", "-", s).strip("-")
@@ -43,7 +44,7 @@ def normalize_label(raw: Optional[str]) -> str:
 _ISA_TAG = re.compile(
     r"^(?:(?P<prefix>[0-9][0-9A-Z]*)-)?"
     r"(?P<letters>[A-Z]{1,6})-"
-    r"(?P<number>[A-Z]?\d{1,5})(?P<suffix>[A-Z]{0,2})"
+    r"(?P<number>[A-Z]?\d{1,9}(?:\.\d{1,9})?)(?P<suffix>[A-Z]{0,2})"
     r"(?:-(?P<ext>[A-Z0-9]{1,4}))?$"
 )
 

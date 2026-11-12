@@ -4,6 +4,7 @@ test_data/
 
 # Working directories (renders, tiles, hints, extractions)
 work/
+output/
 
 # Python
 __pycache__/

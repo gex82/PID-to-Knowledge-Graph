@@ -82,7 +82,8 @@ WITH RECURSIVE walk(id) AS (
     UNION
     SELECT e.target FROM flow_edges e JOIN walk w ON e.source = w.id
 )
-SELECT n.id, n.type, n.label, n.kind, n.name FROM walk JOIN nodes n ON n.id = walk.id;
+SELECT n.id, n.type, n.label, n.kind, n.name FROM walk JOIN nodes n ON n.id = walk.id
+WHERE n.id <> start_id;
 
 CREATE MACRO upstream(start_id) AS TABLE
 WITH RECURSIVE walk(id) AS (
@@ -90,7 +91,8 @@ WITH RECURSIVE walk(id) AS (
     UNION
     SELECT e.source FROM flow_edges e JOIN walk w ON e.target = w.id
 )
-SELECT n.id, n.type, n.label, n.kind, n.name FROM walk JOIN nodes n ON n.id = walk.id;
+SELECT n.id, n.type, n.label, n.kind, n.name FROM walk JOIN nodes n ON n.id = walk.id
+WHERE n.id <> start_id;
 """
 
 
